@@ -1,74 +1,63 @@
-import ConfigParser
+from flask import Flask, redirect, request
 import requests
+import ConfigParser
+import requests.auth
 import json
+from data import secret_key, client_id
 
+redirect_uri = r"http://127.0.0.1:5000/app"
+auth_url = r"https://www.sandbox.paypal.com/webapps/auth/protocol/openidconnect/v1/authorize"
+api_url = r'https://api.sandbox.paypal.com/v1/identity/openidconnect'
 
-class data:	pass
-dat = data()
+application = Flask(__name__)
 
-"""
-https://developer.paypal.com/docs/integration/direct/paypal-oauth2/?mark=oauth
-https://developer.paypal.com/docs/integration/direct/make-your-first-call/
+@application.route("/")
+def index():
 
-curl -v https://api.sandbox.paypal.com/v1/oauth2/token \
--H "Accept: application/json" \
--H "Accept-Language: en_US" \
--u "client_id:secret_id" \
--d "grant_type=client_credentials"
+    resp_type = "code"
+    scope = "openid"
+    reqtext = auth_url + "?client_id=" + client_id +\
+    "&response_type=" + resp_type +\
+    "&scope=" + scope +\
+    "&redirect_uri=" + redirect_uri
 
-"""
+    return redirect(reqtext, 302)
 
-class paypal_api:
-	'Holds methods using REST API paypal by access token'
+@application.route("/app", methods=['GET'])
+def app():
+    """
+    Getting authorization_code
+    """
+    confirm_code = request.args.get('code')
+    if confirm_code is None:
+        return "bad request"
 
-	def __init__(self,token):
-		self.access_token = token
+    auth = (client_id, secret_key)
+    url = api_url + r'/tokenservice'
+    params = {'grant_type': 'authorization_code', 'code': confirm_code, 'redirect_uri': redirect_uri}
+    """
+    Getting an access_token
+    """
+    response = requests.post(url=url, auth=auth, data=params)
+    if response.status_code // 100 != 2:
+        return "Wrong auth"
 
-	def user_creditials(self):
+    access_token = response.json()["access_token"]
+    #print(access_token)
 
-		header = {'Content-Type': 'application/json','Authorization': 'Bearer '+ self.access_token}
-		url = dat.base_url + '/v1/identity/openidconnect/userinfo/?schema=openid'
-		response = requests.post(url=url,headers=header)
+    """
+    Using paypal REST API
+    """
+    url = api_url + r'/userinfo/?schema=openid'
+    headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access_token}
 
-		if response.status_code != 200:
-			return 'error'
+    response = requests.get(url=url, headers=headers)
+    if response.status_code // 100 != 2:
+        print(response.status_code)
+        return "Internal request error"
 
-		return response.text
+    text = response.text
+    return text
 
-
-def get_access_token():
-
-	headers = {'Accept': 'application/json','Accept-Language': 'en_US'}
-	url = dat.base_url + '/v1/oauth2/token'
-	auth = (dat.client_id,dat.secret_id)
-	data = {'grant_type': 'client_credentials','redirect_uri': dat.redirect_uri}
-	response = requests.post(url,data=data,headers=headers,auth=auth)
-
-	if response.status_code != 200:
-		return 'error'
-
-	access_token = response.json()["access_token"]
-	return access_token
-
-def conf():	
-	config = ConfigParser.ConfigParser()
-	configfile = 'data.conf'
-	config.read(configfile)
-	dat.client_id = config.get('paypal','client_id')
-	dat.secret_id = config.get('paypal','secret_id')
-	dat.account = config.get('sandbox','account')
-	dat.pswd = config.get('sandbox','pswd')
-	dat.base_url = config.get('URL','api_url')
-	dat.redirect_uri = config.get('URL','redirect')
-
-def main():
-	conf()
-	access_token = get_access_token()
-	if access_token != 'error':
-		api = paypal_api(access_token)
-		user_info = api.user_creditials()
-		print 'access token: ',access_token
-		print 'user info: ', user_info
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    application.run()
