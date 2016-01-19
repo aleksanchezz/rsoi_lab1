@@ -14,11 +14,9 @@ application = Flask(__name__)
 @application.route("/")
 def index():
 
-    resp_type = "code"
-    scope = "openid"
     reqtext = auth_url + "?client_id=" + client_id +\
-    "&response_type=" + resp_type +\
-    "&scope=" + scope +\
+    "&response_type=code" +\
+    "&scope=openid"+\
     "&redirect_uri=" + redirect_uri
 
     return redirect(reqtext, 302)
@@ -39,11 +37,13 @@ def app():
     Getting an access_token
     """
     response = requests.post(url=url, auth=auth, data=params)
-    if response.status_code // 100 != 2:
+    if response.status_code != 200:
         return "Wrong auth"
-
+    print '------'
+    for val in response:
+        print val
+    print '------'
     access_token = response.json()["access_token"]
-    #print(access_token)
 
     """
     Using paypal REST API
@@ -52,8 +52,7 @@ def app():
     headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access_token}
 
     response = requests.get(url=url, headers=headers)
-    if response.status_code // 100 != 2:
-        print(response.status_code)
+    if response.status_code != 200:
         return "Internal request error"
 
     text = response.text
